@@ -1,0 +1,5 @@
+[llm]
+url='https://api.openai.com/v1/'
+key="sk-proj-1234" # LLM key
+model='text-embedding-3-large'
+model_context=8000  # Context length of above LLM 
