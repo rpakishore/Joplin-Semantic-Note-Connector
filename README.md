@@ -1,8 +1,14 @@
-# Joplin Semantic Note Connector
+# Semantic Note Connector
+
+## Screenshot
+
+![Screenshot](./assets/Joplin_mpNbVW5a4i.png)
+
+The above screenshot was auto-generated using [Link Graph UI Plugin for Joplin](https://github.com/treymo/joplin-link-graph)
 
 ## Overview
 
-The Joplin Semantic Note Connector is a Python script designed to analyze Markdown notes exported from your Joplin application. It identifies semantically similar notes by leveraging language model embeddings and cosine similarity. This tool helps you uncover hidden connections, rediscover related ideas, and gain new insights from your knowledge base.
+The Semantic Note Connector is a Python script designed to analyze Markdown notes. It identifies semantically similar notes by leveraging language model embeddings and cosine similarity. This tool helps you uncover hidden connections, rediscover related ideas, and gain new insights from your knowledge base.
 
 ## Features
 
@@ -19,7 +25,7 @@ The Joplin Semantic Note Connector is a Python script designed to analyze Markdo
 
 The script follows these steps to find related notes:
 
-1.  **Load Notes:** It prompts you for the directory containing your Joplin Markdown exports and reads all `.md` files within it.
+1.  **Load Notes:** It prompts you for the directory containing your Markdown exports and reads all `.md` files within it.
 2.  **Generate Embeddings:** For each note's content:
     * It calculates a unique hash of the content.
     * If an embedding for this hash already exists in `embeddings_cache.json`, it's retrieved from the cache.
