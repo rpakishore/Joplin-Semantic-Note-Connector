@@ -54,7 +54,7 @@ Follow these steps to set up the project:
 1.  **Get the Script:**
     * If you cloned a repository:
         ```bash
-        git [clone <repository_url>](https://github.com/rpakishore/Joplin-Semantic-Note-Connector)
+        git clone https://github.com/rpakishore/Joplin-Semantic-Note-Connector.git
         cd "Joplin-Semantic-Note-Connector"
         ```
     * Otherwise, ensure `process.py` and `config_example.toml` are in the same directory.
