@@ -1,154 +1,286 @@
 # Semantic Note Connector
 
-## Screenshot
-
 ![Screenshot](./assets/Joplin_mpNbVW5a4i.png)
 
-The above screenshot was auto-generated using [Link Graph UI Plugin for Joplin](https://github.com/treymo/joplin-link-graph)
+> The screenshot above is generated using a Joplin link-graph plugin to visualize the connections created by this tool.
 
-## Overview
+Semantic Note Connector automatically discovers semantic relationships between your Joplin notes and writes those connections back into the notes as internal links. This creates a rich “web of connections” that can be visualized by link-graph plugins and explored directly in Joplin.
 
-The Semantic Note Connector is a Python script designed to analyze Markdown notes. It identifies semantically similar notes by leveraging language model embeddings and cosine similarity. This tool helps you uncover hidden connections, rediscover related ideas, and gain new insights from your knowledge base.
+No more manual Markdown exports or hand-wired “related notes” sections: the tool talks directly to Joplin’s Data API, computes similarities using an OpenAI-compatible embedding model, and keeps each note’s semantic connections up to date.
 
-## Features
+---
 
-* **Semantic Similarity Analysis:** Calculates the semantic relevance between all your Joplin notes.
-* **Flexible LLM Integration:** Uses an OpenAI-compatible API, allowing you to connect to various embedding models (e.g., local models via Ollama, or commercial APIs like OpenAI).
-* **Efficient Caching:** Caches generated embeddings to `embeddings_cache.json`, significantly speeding up subsequent runs and minimizing API calls for unchanged notes.
-* **Content Handling:**
-    * Automatically truncates notes that exceed the configured language model's context window.
-    * Handles empty or very short notes gracefully.
-* **Clear Reporting:** Outputs a well-structured Markdown file (`relevance_results.md`) detailing the most relevant notes for each document, along with their similarity scores.
-* **User-Friendly Configuration:** API endpoint, model name, and context length are easily configured via a `config.toml` file.
+## Key Features
 
-## How it Works
+- **Direct Joplin Integration**
+  - Uses the Joplin Data API via the `joppy` library.
+  - No need to export Markdown files manually.
 
-The script follows these steps to find related notes:
+- **Semantic Connections Between Notes**
+  - Generates embeddings for each note using a configurable embedding model.
+  - Computes cosine similarity to find related notes.
+  - Writes internal Joplin links back into each note under a dedicated section.
 
-1.  **Load Notes:** It prompts you for the directory containing your Markdown exports and reads all `.md` files within it.
-2.  **Generate Embeddings:** For each note's content:
-    * It calculates a unique hash of the content.
-    * If an embedding for this hash already exists in `embeddings_cache.json`, it's retrieved from the cache.
-    * Otherwise, the script sends the note's content to the configured LLM API to generate a numerical representation (embedding).
-    * If a note's content is too long for the LLM's context window (defined in `config.toml`), the content is truncated before generating the embedding.
-    * Empty notes are processed by sending a single space to the embedding API to avoid errors, though they won't yield meaningful similarity scores.
-    * The new embedding is then saved to the cache.
-3.  **Calculate Similarity:** Once embeddings are generated for all notes, the script computes the cosine similarity between each note's embedding and the embeddings of all other notes.
-4.  **Generate Report:** Finally, it creates (or overwrites) the `relevance_results.md` file. This report lists each processed note and its top N most semantically similar notes, along with their respective similarity scores and file paths.
+- **Stable, Idempotent Updates**
+  - On every run, the tool fully regenerates its own managed section in each note.
+  - Re-running with the same configuration and notes produces stable results.
 
-## Prerequisites
+- **Efficient Embedding Cache**
+  - Caches embeddings in `embeddings_cache.json`, keyed by content hash.
+  - Includes model metadata to avoid mixing incompatible embeddings.
 
-Before you begin, ensure you have the following installed and set up:
+- **Configurable Behavior**
+  - Adjustable number of neighbors per note (`top_n`).
+  - Minimum similarity threshold (`min_similarity`).
+  - Exclude notes via tags (e.g. `no-semantic-links`, `Private`).
+  - Optional “adapter-only” mode for external agents.
 
-* **Python:** Version 3.13 or higher.
-* **`uv`:** A fast Python package installer and project manager. If you don't have it, you can find installation instructions on the [official `uv` GitHub page](https://github.com/astral-sh/uv).
-* **Joplin Desktop Application:** You'll need this to export your notes.
-* **Access to an OpenAI-compatible API for Embeddings:**
-    * This could be a locally running instance of an LLM server like [Ollama](https://ollama.com/) serving an embedding model (e.g., `nomic-embed-text`, `mxbai-embed-large`, `mistral`, `llama3`).
-    * Alternatively, you can use a cloud-based service like the OpenAI API.
+- **Automation-Friendly**
+  - Designed to run non-interactively.
+  - Driven entirely by `config.toml` and optional CLI flags.
+  - Suitable for cron, Task Scheduler, or integration with LLM CLI agents.
 
-## Setup
+---
 
-Follow these steps to set up the project:
+## How It Works (Conceptual)
 
-1.  **Get the Script:**
-    * If you cloned a repository:
-        ```bash
-        git clone https://github.com/rpakishore/Joplin-Semantic-Note-Connector.git
-        cd "Joplin-Semantic-Note-Connector"
-        ```
-    * Otherwise, ensure `process.py` and `config_example.toml` are in the same directory.
+At a high level:
 
-2.  **Configure API Access:**
-    * The script requires a `config.toml` file to know which LLM to use and how to connect to it. Copy the example configuration:
-        ```bash
-        cp config_example.toml config.toml
-        ```
-    * Edit the newly created `config.toml` file with your specific LLM API details. See the [Configuration (`config.toml`)](#configuration-configtoml) section below for guidance.
+1. **Connect to Joplin**
+   - The tool uses `joppy.client_api.ClientApi` to connect to Joplin Desktop’s Data API.
+   - It performs a small health check (e.g., list notebooks) to validate connectivity.
 
-3.  **Export Joplin Notes:**
-    * Open your Joplin Desktop application.
-    * Navigate to `File` > `Export all`.
-    * In the export dialog, choose `MD - Markdown` as the format.
-    * Select an empty local directory where you want to save your exported Markdown files. **Remember this directory path**, as you'll need it when running the script.
+2. **Fetch and Filter Notes**
+   - Fetches all notes from Joplin with essential fields (ID, title, body, notebook, tags, updated time, todo flags, etc.).
+   - Excludes notes that:
+     - Are deleted or in conflict.
+     - Are encrypted or otherwise unreadable.
+     - Are completed to-dos (optional filter).
+     - Have any tag listed in `joplin.exclude_tags` (case-insensitive).
 
-## Running the Script
+3. **Strip Managed Section**
+   - For each note, removes any previously generated semantic block:
 
-1.  Open your terminal or command prompt.
-2.  Navigate to the directory where `process.py` and your `config.toml` file are located.
-3.  Execute the script using `uv`:
-    ```bash
-    uv run --script process.py
-    ```
-    `uv` will automatically handle the dependencies listed at the top of the `process.py` file.
+     ```markdown
+     <!-- semantic-note-connector:begin -->
+     ## Semantic Connections
+     ...
+     <!-- semantic-note-connector:end -->
+     ```
 
-4.  The script will then prompt you for two pieces of information:
-    * **Path to your Joplin Markdown notes directory:** Enter the full path to the directory where you exported your notes in the setup step.
-    * **Number of relevant documents:** Enter how many of the most similar notes you want to see listed for each document (e.g., `5`). If you press Enter without typing a number, it defaults to 5.
+   - The resulting body is called `clean_body` and is what gets embedded.
 
-5.  The script will start processing your notes. This may take some time, especially on the first run or with a large number of notes, as it needs to generate embeddings. Subsequent runs will be faster for notes that haven't changed, thanks to the cache.
+4. **Generate or Reuse Embeddings**
+   - Builds a text representation for each note:
 
-6.  Once completed, the script will save the results in `relevance_results.md` and update the `embeddings_cache.json` file. You'll see a confirmation message in the console.
+     ```text
+     {title}
 
-## Configuration (`config.toml`)
+     {clean_body}
+     ```
 
-The `config.toml` file is crucial for telling the script how to connect to your chosen language model API for generating embeddings. Here's an example and explanation of its fields:
+   - Normalizes whitespace and computes a content hash.
+   - Looks up the hash in `embeddings_cache.json`.
+     - If found and cache metadata matches the current model, reuse.
+     - If not, call the configured embedding endpoint via the `openai` client:
+       - Enforce context window via `tiktoken` (truncate to `model_context` tokens).
+     - Store new embeddings in the cache.
+
+5. **Compute Similarities**
+   - Uses `numpy` and `scikit-learn`’s `cosine_similarity` to compute pairwise similarities.
+   - For each note:
+     - Ranks other notes by similarity.
+     - Keeps up to `top_n` neighbors with similarity ≥ `min_similarity`.
+     - Breaks ties deterministically by title and ID.
+
+6. **Update Notes**
+   - For each note with at least one neighbor:
+     - Re-checks `updated_time` from Joplin to detect concurrent edits.
+     - If unchanged:
+       - Writes a fresh semantic block at the end of the body:
+
+         ```markdown
+         <!-- semantic-note-connector:begin -->
+         ## Semantic Connections
+
+         1. [Some Related Note](:/NOTE_ID_1)
+         2. [Another Related Note](:/NOTE_ID_2)
+         <!-- semantic-note-connector:end -->
+         ```
+
+       - Links are standard Joplin internal links (`[Title](:/ID)`), so link-graph plugins can use them.
+     - If `updated_time` changed, the note is skipped for safety and logged.
+   - For notes with **no** neighbors above threshold:
+     - Any existing semantic block is removed.
+
+7. **Optional Global Report**
+   - When enabled, writes `relevance_results.md` summarizing:
+     - Run metadata (timestamp, model, thresholds).
+     - For each note, its top neighbors with similarity scores and Joplin links.
+
+---
+
+## Requirements
+
+### Joplin
+
+- Joplin Desktop must be installed and running.
+- The **Data API (Web Clipper API)** must be enabled:
+  - In Joplin, go to Tools → Options → Web Clipper.
+  - Enable the service and take note of the API token and port.
+
+### Python & uv
+
+- Python **3.13+** (or a version you manage via `uv`).
+- [`uv`](https://docs.astral.sh/uv/) installed (`uv --version` should work).
+
+The project is managed **only** via `uv` and `pyproject.toml`. You should not use `pip` or `requirements.txt` for this repository.
+
+### Embedding Provider
+
+You need an **OpenAI-compatible** embedding endpoint, such as:
+
+- **Local**:
+  - [Ollama](https://ollama.com/) with models like `nomic-embed-text` or `mxbai-embed-large`.
+  - Any other local server that exposes an OpenAI-compatible `/embeddings` endpoint.
+- **Cloud**:
+  - OpenAI (`https://api.openai.com/v1`) or compatible providers.
+
+> Privacy note: When using cloud APIs, your note content will be sent to that provider. Use a local LLM if you want everything to stay on your machine.
+
+---
+
+## Installation
+
+Clone this repository:
+
+```sh
+git clone https://github.com/rpakishore/Joplin-Semantic-Note-Connector.git
+cd Joplin-Semantic-Note-Connector
+```
+
+Install dependencies with:
+
+```sh
+uv sync
+```
+
+Run the connector:
+
+```sh
+uv run semantic-note-connector
+```
+
+---
+
+## Configuration
+
+Create your configuration file:
+
+```sh
+cp config_example.toml config.toml
+```
+
+Then edit `config.toml` to match your setup. The **target** structure (some fields may be added as the new implementation lands) is:
 
 ```toml
 [llm]
-# Name of the embedding model to use. This must match a model
-# available at your API endpoint.
-# Example for Ollama: "nomic-embed-text", "mxbai-embed-large", "mistral"
-# Example for OpenAI API: "text-embedding-ada-002", "text-embedding-3-small"
-model = "nomic-embed-text"
-
-# Context window size of the model in tokens.
-# You should check your specific model's documentation for this value.
-# For nomic-embed-text (via Ollama), this is often 8192.
-# For OpenAI's text-embedding-ada-002, it's 8191.
-model_context = 8192
-
-# Base URL of the OpenAI-compatible API.
-# Example for a local Ollama instance (default port): "http://localhost:11434/v1"
-# Example for OpenAI API: "[https://api.openai.com/v1](https://api.openai.com/v1)"
 url = "http://localhost:11434/v1"
+key = "ollama"              # or OpenAI key, see privacy notes
+model = "nomic-embed-text"
+model_context = 8192
+fallback_encoding = "cl100k_base"
 
-# API key for the service.
-# For a local Ollama setup, this can often be a non-empty placeholder string
-# like "ollama", "placeholder", or any other string.
-# For OpenAI, this must be your actual OpenAI API key.
-key = "ollama"
+[joplin]
+base_url = "http://127.0.0.1:41184"
+token = "YOUR_JOPLIN_TOKEN"
+exclude_tags = ["no-semantic-links", "Private"]
 
+[semantic]
+top_n = 5
+min_similarity = 0.6
+generate_global_report = true
+mode = "local-embed"        # or "adapter-only"
+dry_run = false
+max_notes = 5000
+notes_dump_path = "notes_dump.json"
+connections_update_path = "connections_update.json"
+verbose = false
 ```
 
-## Output
+### Environment Variable Overrides
 
-The script produces two main outputs:
+- `LLM_API_KEY` overrides `[llm].key`.
+- `JOPLIN_TOKEN` overrides `[joplin].token`.
+- `SEMANTIC_CONNECTOR_CONFIG` can point to an alternate config file.
 
-1. `embeddings_cache.json`:
-   - This file stores the generated embeddings for your notes.
-   - It uses a content hash to identify notes, so embeddings are only re-generated if a note's content changes.
-   - This speeds up subsequent runs significantly.
+This allows you to keep secrets out of version-controlled files.
 
-2. `relevance_results.md`:
-   - A Markdown file containing the analysis results.
-   - For each processed document, it lists the most relevant other documents based on semantic similarity, along with their similarity scores.
-   - It includes the source directory, the number of documents processed, and the requested number of top N relevant documents.
+---
 
-## Caching
+## Usage
 
-The script uses a caching mechanism (`embeddings_cache.json`) to store generated embeddings.
+Typical usage:
 
-- Before generating an embedding for a document, the script calculates a SHA256 hash of its content.
-- It checks if an embedding for this hash already exists in the cache.
-    - If found, the cached embedding is used.
-    - If not found, a new embedding is generated via the API, and then stored in the cache with its content hash.
-- This significantly reduces API calls and processing time on subsequent runs, especially if notes haven't changed.
-- The cache is automatically loaded at the start and saved if any new embeddings are generated.
+- Standard run (local embeddings):
+  ```sh
+  uv run semantic-note-connector
+  ```
+- Adapter-only mode (no embeddings, JSON in/out):
+  ```sh
+  uv run semantic-note-connector --mode adapter-only
+  ```
+- Dry-run preview:
+  ```sh
+  uv run semantic-note-connector --dry-run
+  ```
 
-## Next Steps (Based on Script Output)
+---
 
-After running the script and reviewing `relevance_results.md`:
+## Privacy & Security
 
-1. Review the relevance scores in the generated report.
-2. If using this with Joplin, you might want to map the reported file paths to Joplin Note IDs (e.g., `:/NOTE_ID_HERE`) to create internal links within Joplin. The script identifies relevant file paths based on their content similarity; further mapping to Joplin's internal linking system would be a manual or separate process.
+- Your notes’ contents are sent to whichever embedding endpoint you configure.
+  - Use a local endpoint (e.g., Ollama) if you want to keep data on your machine.
+- API keys and tokens:
+  - Must never be committed to version control.
+  - Prefer environment variables for secrets.
+- The tool:
+  - Does **not** log note bodies or large snippets.
+  - Logs only IDs, titles, and high-level counts.
+
+---
+
+## Motivation
+
+Over time, a personal knowledge base (PKM) or note system like Joplin grows into thousands of notes. While tags and notebooks help, many of the most interesting connections between ideas are never made explicit.
+
+Semantic Note Connector aims to:
+
+- Uncover **hidden relationships** between notes you may have forgotten.
+- Help you **navigate by meaning**, not just keywords.
+- Provide **machine-maintained internal links** that your graph plugins and search tools can build on top of.
+
+You keep writing notes as usual; the tool keeps your web of connections alive.
+
+---
+
+## Roadmap & Future Enhancements
+
+Planned or potential improvements (not all implemented yet):
+
+- **Incremental recomputation**
+  - Only recompute embeddings and similarities for notes whose content changed since the last run.
+
+- **Include filters**
+  - Ability to process only certain notebooks or tags, in addition to exclude-tags.
+
+- **Per-notebook thresholds**
+  - Different `top_n` / `min_similarity` per notebook or tag.
+
+- **Scalability**
+  - Optional approximate nearest neighbor search for very large note collections.
+
+- **Richer reports or UI**
+  - More detailed overviews, or export for external graph tools.
+
+For implementation details and the most up-to-date behavior, see `AGENTS.md` (developer view) and `Deployment.md`.

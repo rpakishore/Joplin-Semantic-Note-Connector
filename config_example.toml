@@ -1,5 +1,22 @@
 [llm]
-url='https://api.openai.com/v1/'
-key="sk-proj-1234" # LLM key
-model='text-embedding-3-large'
-model_context=8000  # Context length of above LLM 
+url = "http://localhost:11434/v1"
+key = "YOUR_LLM_KEY"           # Overridable by LLM_API_KEY
+model = "nomic-embed-text"
+model_context = 8192
+fallback_encoding = "cl100k_base"
+
+[joplin]
+base_url = "http://127.0.0.1:41184"
+token = "YOUR_JOPLIN_TOKEN"    # Overridable by JOPLIN_TOKEN
+exclude_tags = ["no-semantic-links", "private"]
+
+[semantic]
+top_n = 5
+min_similarity = 0.6
+generate_global_report = true
+mode = "local-embed"            # or "adapter-only"
+dry_run = false
+max_notes = 5000
+notes_dump_path = "notes_dump.json"
+connections_update_path = "connections_update.json"
+verbose = false

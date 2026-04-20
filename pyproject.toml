@@ -1,0 +1,26 @@
+[project]
+name = "semantic-note-connector"
+version = "0.1.0"
+description = "Semantic connector for Joplin notes"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "joppy",
+    "numpy",
+    "openai>=1.0.0",
+    "scikit-learn",
+    "tiktoken",
+]
+
+[project.scripts]
+semantic-note-connector = "semantic_note_connector.process:main"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
